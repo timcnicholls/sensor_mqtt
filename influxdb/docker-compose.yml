@@ -1,0 +1,29 @@
+influxdb:
+    image: influxdb:latest
+    command: -config /etc/influxdb/influxdb.conf
+    ports:
+        - "8083:8083"
+        - "8086:8086"
+    volumes:
+        - ./etc/influxdb:/etc/influxdb
+        - ./var/lib/influxdb:/var/lib/influxdb
+
+grafana:
+    image: grafana/grafana:latest
+    ports:
+        - "3000:3000"
+    volumes:
+        - ./etc/grafana:/etc/grafana
+        - ./var/lib/grafana:/var/lib/grafana
+    links:
+        - influxdb
+
+# chronograf:
+#     image: chronograf:latest
+#     ports:
+#         - "10000:10000"
+#     volumes:
+#         - ./etc/chronograf:/etc/chronograf
+#         - ./var/lib/chronograf:/var/lib/chronograf
+#     links:
+#         - influxdb
