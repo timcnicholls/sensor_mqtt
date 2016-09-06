@@ -6,11 +6,13 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 
-const char* ssid = "test";
-const char* password = "";
+#include "local_config.h"
 
-IPAddress mqttServer(192, 168, 2, 1);
-int       mqttPort = 1883;
+const char* ssid = LOCAL_CONFIG_WIFI_SSID;
+const char* password = LOCAL_CONFIG_WPA_PASSWD;
+
+IPAddress mqttServer(LOCAL_CONFIG_MQTT_SERVER);
+int       mqttPort = LOCAL_CONFIG_MQTT_PORT;
 
 WiFiClient wClient;
 PubSubClient mqttClient(wClient);
@@ -52,7 +54,7 @@ void setup() {
 
   // Start ESP8266 WiFi in station mode, join the network
   WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid);
+  WiFi.begin(ssid, password);
 
   // Wait for WiFI to connect then print status info
   while(WiFi.status() != WL_CONNECTED) {
@@ -107,12 +109,14 @@ void mqttPublishBmeData()
   if (bmeOK) 
   {
     bmeTemperature = bme.readTemperature();
-    bmePressure    = bme.readPressure();
+    bmePressure    = bme.readPressure() / 100.0;
     bmeHumidity    = bme.readHumidity();
   }
 
-  String bmePubString = "{\"bme280\" : {\"temperature\": \"" + String(bmeTemperature) + "\", \"pressure\" : \""
-    + String(bmePressure) + "\", \"humidity\" : \"" + String(bmeHumidity) + "\"} }";
+//  String bmePubString = "{\"bme280\" : {\"temperature\": \"" + String(bmeTemperature) + "\", \"pressure\" : \""
+//    + String(bmePressure) + "\", \"humidity\" : \"" + String(bmeHumidity) + "\"} }";
+  String bmePubString = "{\"temperature\": \"" + String(bmeTemperature) + "\", \"pressure\" : \""
+    + String(bmePressure) + "\", \"humidity\" : \"" + String(bmeHumidity) + "\"}";
   
   bmePubString.toCharArray(pubMsgBuf, bmePubString.length()+1);
   Serial.println(bmePubString);
