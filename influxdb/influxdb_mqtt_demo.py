@@ -3,6 +3,7 @@ import json
 from influxdb import InfluxDBClient
 from datetime import datetime
 import argparse
+import time
 
 import logger
 
@@ -12,6 +13,32 @@ MQTT_TIMEOUT=60
 INFLUX_IP='127.0.0.1'
 INFLUX_PORT=8086
 INFLUX_DB='mydb'
+DOWNSAMPLE_RATIO=12
+
+class SensorSamples(object):
+
+    def __init__(self, id):
+        self.id = id
+        self.samples = {}
+
+    def add_sample(self, field, value):
+
+        if field not in self.samples:
+            self.samples[field] = []
+
+        self.samples[field].append(value)
+
+    def max_samples(self):
+        return max((len(samples) for samples in self.samples.values()))
+
+    def clear(self):
+        for field in self.samples:
+            self.samples[field][:] = []
+
+    def sample_means(self):
+        for field in self.samples:
+            if len(self.samples[field]):
+                yield field, sum(self.samples[field]) / len(self.samples[field])
 
 class SensorDbLogger(object):
     '''
@@ -19,6 +46,10 @@ class SensorDbLogger(object):
     '''
 
     def __init__(self, args):
+
+        # Initialise sample arrays and update time
+        self.sensor_samples = {}
+        self.downsample = args.downsample
 
         # Get the logger instance
         self.logger = logger.get_logger()
@@ -61,23 +92,32 @@ class SensorDbLogger(object):
         self.logger.debug('Got message: %s %s', msg.topic, msg.payload)
 
         sensor_id = msg.topic.split('/')[-1]
-
         sensor_data = json.loads(msg.payload)
-        sensor_temperature_c = float(sensor_data['temperature'])
-        sensor_pressure_mb   = float(sensor_data['pressure'])
-        sensor_humidity_pc   = float(sensor_data['humidity'])
 
-        data_points = [
-            {
-                'measurement': sensor_id,
-                'fields': {
-                    'temperature': sensor_temperature_c,
-                    'pressure': sensor_pressure_mb,
-                    'humidity': sensor_humidity_pc,
+        if sensor_id not in self.sensor_samples:
+            self.sensor_samples[sensor_id] = SensorSamples(sensor_id)
+
+        for field, value in sensor_data.iteritems():
+            self.sensor_samples[sensor_id].add_sample(field, float(value))
+
+        if self.sensor_samples[sensor_id].max_samples() >= self.downsample:
+
+            data_points = [
+                {
+                    'measurement': sensor_id,
+                    'fields': {}
                 }
-            }
-        ]
-        self.influx_client.write_points(data_points)
+            ]
+
+            for field, mean_val in self.sensor_samples[sensor_id].sample_means():
+                self.logger.debug("Sensor id {} field {} mean {}".format(
+                    sensor_id, field, mean_val
+                ))
+                data_points[0]['fields'][field] = mean_val
+
+            self.logger.debug("Doing update: {}".format(data_points))
+            self.influx_client.write_points(data_points)
+            self.sensor_samples[sensor_id].clear()
 
 
 def parse_args():
@@ -101,7 +141,11 @@ def parse_args():
                         help='Set the IP address of the influxDB server to connect to (default={})'.format(INFLUX_PORT))
     parser.add_argument('--influx_db', action='store', dest='influx_db', default=INFLUX_DB,
                         help='Set the name of the influxDB database to use (default={})'.format(INFLUX_DB))
-
+    parser.add_argument(
+        '--downsample', action='store', dest='downsample', type=int,
+        default=DOWNSAMPLE_RATIO,
+        help='Sets the downsample ratio for updates to the database (default={})'.format(DOWNSAMPLE_RATIO)
+    )
     parser.add_argument('--logging', action='store', default='info',
                         choices=['debug', 'info', 'warning', 'error', 'none'],
                         help='Set the logger level')
