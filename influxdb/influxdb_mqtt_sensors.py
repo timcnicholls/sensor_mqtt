@@ -15,6 +15,11 @@ INFLUX_PORT=8086
 INFLUX_DB='mydb'
 DOWNSAMPLE_RATIO=12
 
+LOCAL_ALTITUDE = 83.9
+
+def sea_level_pressure(atm_pressure, altitude):
+    return atm_pressure / pow(1.0 - (altitude / 44330.0), 5.255)
+
 class SensorSamples(object):
 
     def __init__(self, id):
@@ -98,6 +103,10 @@ class SensorDbLogger(object):
             self.sensor_samples[sensor_id] = SensorSamples(sensor_id)
 
         for field, value in sensor_data.iteritems():
+
+	    if field == 'pressure':
+		value = sea_level_pressure(float(value), LOCAL_ALTITUDE)
+
             self.sensor_samples[sensor_id].add_sample(field, float(value))
 
         if self.sensor_samples[sensor_id].max_samples() >= self.downsample:
